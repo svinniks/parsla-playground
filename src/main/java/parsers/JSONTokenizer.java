@@ -38,7 +38,7 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
         return new JSONTokenIterator(characterIterator);
     }
 
-    private static class JSONTokenIterator implements AbstractBufferedTextTokenIterator<TextPosition> {
+    private static class JSONTokenIterator extends AbstractBufferedTextTokenIterator {
         private enum State {
             LF_VALUE,
             R_STRING,
@@ -47,111 +47,87 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             R_SPECIAL_VALUE
         }
 
-        private final CharacterIterator characterIterator;
         private State state;
-        private char c;
-        private final Deque<Token> tokens;
         private final StringBuilder valueBuilder;
         private String specialValue;
         private int specialI;
         private Token specialToken;
-        private TextPosition textPosition;
+        private TextPosition tokenPosition;
 
         public JSONTokenIterator(CharacterIterator characterIterator) {
-            this.characterIterator = characterIterator;
+            super(characterIterator);
             state = State.LF_VALUE;
             valueBuilder = new StringBuilder();
-            //valueBuilder.setLength(0);
-            tokens = new ArrayDeque<>();
         }
 
         @Override
-        public boolean hasNext() throws IOException {
-            ensureNextToken();
-            return !tokens.isEmpty();
-        }
-
-        @Override
-        public Token next() throws IOException {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-
-            return tokens.pop();
-        }
-
-        @Override
-        public TextPosition position() {
-            return null;
-        }
-
-        private void ensureNextToken() throws IOException {
-            if (tokens.isEmpty() && characterIterator.hasNext()) {
-                while (tokens.isEmpty() && characterIterator.hasNext()) {
-                    c = characterIterator.next();
-
-                    if (state == State.LF_VALUE) {
-                        lfValue();
-                    } else if (state == State.R_STRING) {
-                        rString();
-                    } else if (state == State.R_ESCAPED_CHARACTER) {
-                        rEscapedCharacter();
-                    } else if (state == State.R_DECIMAL_INTEGER) {
-                        rDecimalInteger();
-                    } else if (state == State.R_SPECIAL_VALUE) {
-                        rSpecialValue();
-                    }
-                }
-
-                if (tokens.isEmpty()) {
-                    if (state != State.LF_VALUE) {
-                        throw new ParsingException("Unexpected end of the input!");
-                    }
-                }
+        protected void character(char c) {
+            if (state == State.LF_VALUE) {
+                lfValue(c);
+            } else if (state == State.R_STRING) {
+                rString(c);
+            } else if (state == State.R_ESCAPED_CHARACTER) {
+                rEscapedCharacter(c);
+            } else if (state == State.R_DECIMAL_INTEGER) {
+                rDecimalInteger(c);
+            } else if (state == State.R_SPECIAL_VALUE) {
+                rSpecialValue(c);
             }
         }
 
-        private void lfValue() {
+        @Override
+        protected void end() {
+            if (state != State.LF_VALUE) {
+                throw new ParsingException("Unexpected end of the input!");
+            }
+        }
+
+        private void lfValue(char c) {
             if (c == '{') {
-                tokens.push(LEFT_CURLY_BRACKET_TOKEN);
+                push(LEFT_CURLY_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == '}') {
-                tokens.push(RIGHT_CURLY_BRACKET_TOKEN);
+                push(RIGHT_CURLY_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == '[') {
-                tokens.push(LEFT_SQUARE_BRACKET_TOKEN);
+                push(LEFT_SQUARE_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == ']') {
-                tokens.push(RIGHT_SQUARE_BRACKET_TOKEN);
+                push(RIGHT_SQUARE_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == ':') {
-                tokens.push(COLON_TOKEN);
+                push(COLON_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == ',') {
-                tokens.push(COMMA_TOKEN);
+                push(COMMA_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == '"') {
                 valueBuilder.setLength(0);
                 state = State.R_STRING;
+                tokenPosition = characterPosition();
             } else if (c == 'n') {
                 specialI = 1;
                 specialValue = "null";
                 specialToken = NULL_TOKEN;
                 state = State.R_SPECIAL_VALUE;
+                tokenPosition = characterPosition();
             } else if (c == 't') {
                 specialI = 1;
                 specialValue = "true";
                 specialToken = TRUE_TOKEN;
                 state = State.R_SPECIAL_VALUE;
+                tokenPosition = characterPosition();
             } else if (c == 'f') {
                 specialI = 1;
                 specialValue = "false";
                 specialToken = FALSE_TOKEN;
                 state = State.R_SPECIAL_VALUE;
+                tokenPosition = characterPosition();
             } else if (c >= '0' && c <= '9') {
                 valueBuilder.setLength(0);
                 valueBuilder.append(c);
                 state = State.R_DECIMAL_INTEGER;
+                tokenPosition = characterPosition();
             } else if (Character.isSpace(c)) {
                 state = State.LF_VALUE;
             } else {
@@ -159,18 +135,18 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             }
         }
 
-        private void rString() {
+        private void rString(char c) {
             if (c == '\\') {
                 state = State.R_ESCAPED_CHARACTER;
             } else if (c == '"') {
-                tokens.push(new Token(STRING_TYPE, valueBuilder.toString()));
+                push(new Token(STRING_TYPE, valueBuilder.toString()), tokenPosition);
                 state = State.LF_VALUE;
             } else {
                 valueBuilder.append(c);
             }
         }
 
-        private void rEscapedCharacter() {
+        private void rEscapedCharacter(char c) {
             if (c == '"') {
                 valueBuilder.append('"');
                 state = State.R_STRING;
@@ -179,20 +155,21 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             }
         }
 
-        private void rDecimalInteger() {
+        private void rDecimalInteger(char c) {
             if (c >= '0' && c <= '9') {
                 valueBuilder.append(c);
             } else {
                 var value = valueBuilder.toString();
-                lfValue();
-                tokens.push(new Token(DECIMAL_TYPE, value));
+                var tokenPosition = this.tokenPosition;
+                lfValue(c);
+                push(new Token(DECIMAL_TYPE, value), tokenPosition);
             }
         }
 
-        private void rSpecialValue() {
+        private void rSpecialValue(char c) {
             if (c == specialValue.charAt(specialI++)) {
                 if (specialI == specialValue.length()) {
-                    tokens.push(specialToken);
+                    push(specialToken, tokenPosition);
                     state = State.LF_VALUE;
                 }
             } else {
