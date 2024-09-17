@@ -4,6 +4,7 @@ import org.vinniks.parsla.grammar.Grammar;
 import org.vinniks.parsla.parser.Parser;
 import org.vinniks.parsla.parser.TextParser;
 import org.vinniks.parsla.syntaxtree.SyntaxTreeNode;
+import org.vinniks.parsla.tokenizer.text.TextPosition;
 
 import java.io.IOException;
 import java.util.stream.Collectors;
@@ -41,14 +42,15 @@ public class JSONParser {
     }
 
     public String parse(String json) throws IOException {
-        PARSER.validate(json, "json");
+        return PARSER.parse(json, "json").toString();
+//        PARSER.validate(json, "json");
 //        return PARSER.parse(json, "json").toString();
-        return null;
+//        return null;
         //return syntaxTree.toString();
         //return buildJSON(syntaxTree.child());
     }
 
-    private String buildJSON(SyntaxTreeNode node) {
+    private String buildJSON(SyntaxTreeNode<TextPosition> node) {
         if (node.valueIs("OBJECT")) {
             return "{"
                 + node
@@ -76,7 +78,7 @@ public class JSONParser {
         }
     }
 
-    private String buildProperty(SyntaxTreeNode node) {
+    private String buildProperty(SyntaxTreeNode<TextPosition> node) {
         return node.singular("NAME")
             + ": "
             + buildJSON(node.child("VALUE").child());

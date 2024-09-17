@@ -1,16 +1,14 @@
 package parsers;
 
 import org.vinniks.parsla.exception.ParsingException;
-import org.vinniks.parsla.tokenizer.SimpleToken;
 import org.vinniks.parsla.tokenizer.Token;
 import org.vinniks.parsla.tokenizer.TokenIterator;
-import org.vinniks.parsla.tokenizer.tokenizers.AbstractBufferedTextTokenizer;
+import org.vinniks.parsla.tokenizer.text.AbstractBufferedTextTokenIterator;
+import org.vinniks.parsla.tokenizer.text.AbstractBufferedTextTokenizer;
+import org.vinniks.parsla.tokenizer.text.TextPosition;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 public class JSONTokenizer extends AbstractBufferedTextTokenizer {
     private static final String LEFT_CURLY_BRACKET_TYPE = "left-curly-bracket";
@@ -25,41 +23,22 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
     private static final String COLON_TYPE = "colon";
     private static final String COMMA_TYPE= "comma";
 
-    private static final Iterable<String> TOKEN_TYPES = List.of(
-        LEFT_CURLY_BRACKET_TYPE,
-        RIGHT_CURLY_BRACKET_TYPE,
-        LEFT_SQUARE_BRACKET_TYPE,
-        RIGHT_SQUARE_BRACKET_TYPE,
-        STRING_TYPE,
-        DECIMAL_TYPE,
-        NULL_TYPE,
-        TRUE_TYPE,
-        FALSE_TYPE,
-        COLON_TYPE,
-        COMMA_TYPE
-    );
-
-    private static final Token LEFT_CURLY_BRACKET_TOKEN = new SimpleToken(LEFT_CURLY_BRACKET_TYPE, null);
-    private static final Token RIGHT_CURLY_BRACKET_TOKEN = new SimpleToken(RIGHT_CURLY_BRACKET_TYPE, null);
-    private static final Token LEFT_SQUARE_BRACKET_TOKEN = new SimpleToken(LEFT_SQUARE_BRACKET_TYPE, null);
-    private static final Token RIGHT_SQUARE_BRACKET_TOKEN = new SimpleToken(RIGHT_SQUARE_BRACKET_TYPE, null);
-    private static final Token NULL_TOKEN = new SimpleToken(NULL_TYPE, null);
-    private static final Token TRUE_TOKEN = new SimpleToken(TRUE_TYPE, null);
-    private static final Token FALSE_TOKEN = new SimpleToken(FALSE_TYPE, null);
-    private static final Token COLON_TOKEN = new SimpleToken(COLON_TYPE, null);
-    private static final Token COMMA_TOKEN = new SimpleToken(COMMA_TYPE, null);
-
-    @Override
-    public Iterable<String> getTokenTypes() {
-        return TOKEN_TYPES;
-    }
+    private static final Token LEFT_CURLY_BRACKET_TOKEN = new Token(LEFT_CURLY_BRACKET_TYPE, null);
+    private static final Token RIGHT_CURLY_BRACKET_TOKEN = new Token(RIGHT_CURLY_BRACKET_TYPE, null);
+    private static final Token LEFT_SQUARE_BRACKET_TOKEN = new Token(LEFT_SQUARE_BRACKET_TYPE, null);
+    private static final Token RIGHT_SQUARE_BRACKET_TOKEN = new Token(RIGHT_SQUARE_BRACKET_TYPE, null);
+    private static final Token NULL_TOKEN = new Token(NULL_TYPE, null);
+    private static final Token TRUE_TOKEN = new Token(TRUE_TYPE, null);
+    private static final Token FALSE_TOKEN = new Token(FALSE_TYPE, null);
+    private static final Token COLON_TOKEN = new Token(COLON_TYPE, null);
+    private static final Token COMMA_TOKEN = new Token(COMMA_TYPE, null);
 
     @Override
     protected TokenIterator getTokenIterator(CharacterIterator characterIterator) {
         return new JSONTokenIterator(characterIterator);
     }
 
-    private static class JSONTokenIterator implements TokenIterator {
+    private static class JSONTokenIterator extends AbstractBufferedTextTokenIterator {
         private enum State {
             LF_VALUE,
             R_STRING,
@@ -68,105 +47,87 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             R_SPECIAL_VALUE
         }
 
-        private final CharacterIterator characterIterator;
         private State state;
-        private char c;
-        private Deque<Token> tokens;
-        private StringBuilder valueBuilder;
+        private final StringBuilder valueBuilder;
         private String specialValue;
         private int specialI;
         private Token specialToken;
+        private TextPosition tokenPosition;
 
         public JSONTokenIterator(CharacterIterator characterIterator) {
-            this.characterIterator = characterIterator;
+            super(characterIterator);
             state = State.LF_VALUE;
             valueBuilder = new StringBuilder();
-            //valueBuilder.setLength(0);
-            tokens = new ArrayDeque<>();
         }
 
         @Override
-        public boolean hasNext() throws IOException {
-            ensureNextToken();
-            return !tokens.isEmpty();
+        protected void character(char c) {
+            if (state == State.LF_VALUE) {
+                lfValue(c);
+            } else if (state == State.R_STRING) {
+                rString(c);
+            } else if (state == State.R_ESCAPED_CHARACTER) {
+                rEscapedCharacter(c);
+            } else if (state == State.R_DECIMAL_INTEGER) {
+                rDecimalInteger(c);
+            } else if (state == State.R_SPECIAL_VALUE) {
+                rSpecialValue(c);
+            }
         }
 
         @Override
-        public Token next() throws IOException {
-            if (!hasNext()) {
-                throw new NoSuchElementException();
-            }
-
-            return tokens.pop();
-        }
-
-        private void ensureNextToken() throws IOException {
-            if (tokens.isEmpty() && characterIterator.hasNext()) {
-                while (tokens.isEmpty() && characterIterator.hasNext()) {
-                    c = characterIterator.next();
-
-                    if (state == State.LF_VALUE) {
-                        lfValue();
-                    } else if (state == State.R_STRING) {
-                        rString();
-                    } else if (state == State.R_ESCAPED_CHARACTER) {
-                        rEscapedCharacter();
-                    } else if (state == State.R_DECIMAL_INTEGER) {
-                        rDecimalInteger();
-                    } else if (state == State.R_SPECIAL_VALUE) {
-                        rSpecialValue();
-                    }
-                }
-
-                if (tokens.isEmpty()) {
-                    if (state != State.LF_VALUE) {
-                        throw new ParsingException("Unexpected end of the input!");
-                    }
-                }
+        protected void end() {
+            if (state != State.LF_VALUE) {
+                throw new ParsingException("Unexpected end of the input!");
             }
         }
 
-        private void lfValue() {
+        private void lfValue(char c) {
             if (c == '{') {
-                tokens.push(LEFT_CURLY_BRACKET_TOKEN);
+                push(LEFT_CURLY_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == '}') {
-                tokens.push(RIGHT_CURLY_BRACKET_TOKEN);
+                push(RIGHT_CURLY_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == '[') {
-                tokens.push(LEFT_SQUARE_BRACKET_TOKEN);
+                push(LEFT_SQUARE_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == ']') {
-                tokens.push(RIGHT_SQUARE_BRACKET_TOKEN);
+                push(RIGHT_SQUARE_BRACKET_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == ':') {
-                tokens.push(COLON_TOKEN);
+                push(COLON_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == ',') {
-                tokens.push(COMMA_TOKEN);
+                push(COMMA_TOKEN, characterPosition());
                 state = State.LF_VALUE;
             } else if (c == '"') {
                 valueBuilder.setLength(0);
                 state = State.R_STRING;
+                tokenPosition = characterPosition();
             } else if (c == 'n') {
                 specialI = 1;
                 specialValue = "null";
                 specialToken = NULL_TOKEN;
                 state = State.R_SPECIAL_VALUE;
+                tokenPosition = characterPosition();
             } else if (c == 't') {
                 specialI = 1;
                 specialValue = "true";
                 specialToken = TRUE_TOKEN;
                 state = State.R_SPECIAL_VALUE;
+                tokenPosition = characterPosition();
             } else if (c == 'f') {
                 specialI = 1;
                 specialValue = "false";
                 specialToken = FALSE_TOKEN;
                 state = State.R_SPECIAL_VALUE;
+                tokenPosition = characterPosition();
             } else if (c >= '0' && c <= '9') {
                 valueBuilder.setLength(0);
                 valueBuilder.append(c);
                 state = State.R_DECIMAL_INTEGER;
+                tokenPosition = characterPosition();
             } else if (Character.isSpace(c)) {
                 state = State.LF_VALUE;
             } else {
@@ -174,18 +135,18 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             }
         }
 
-        private void rString() {
+        private void rString(char c) {
             if (c == '\\') {
                 state = State.R_ESCAPED_CHARACTER;
             } else if (c == '"') {
-                tokens.push(new SimpleToken(STRING_TYPE, valueBuilder.toString()));
+                push(new Token(STRING_TYPE, valueBuilder.toString()), tokenPosition);
                 state = State.LF_VALUE;
             } else {
                 valueBuilder.append(c);
             }
         }
 
-        private void rEscapedCharacter() {
+        private void rEscapedCharacter(char c) {
             if (c == '"') {
                 valueBuilder.append('"');
                 state = State.R_STRING;
@@ -194,20 +155,21 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             }
         }
 
-        private void rDecimalInteger() {
+        private void rDecimalInteger(char c) {
             if (c >= '0' && c <= '9') {
                 valueBuilder.append(c);
             } else {
                 var value = valueBuilder.toString();
-                lfValue();
-                tokens.push(new SimpleToken(DECIMAL_TYPE, value));
+                var tokenPosition = this.tokenPosition;
+                lfValue(c);
+                push(new Token(DECIMAL_TYPE, value), tokenPosition);
             }
         }
 
-        private void rSpecialValue() {
+        private void rSpecialValue(char c) {
             if (c == specialValue.charAt(specialI++)) {
                 if (specialI == specialValue.length()) {
-                    tokens.push(specialToken);
+                    push(specialToken, tokenPosition);
                     state = State.LF_VALUE;
                 }
             } else {
