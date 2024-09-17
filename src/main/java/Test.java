@@ -4,14 +4,14 @@ import org.vinniks.parsla.exception.ParsingException;
 import org.vinniks.parsla.grammar.Grammar;
 import org.vinniks.parsla.grammar.serialization.StandardGrammarReader;
 import org.vinniks.parsla.parser.Parser;
-import org.vinniks.parsla.tokenizer.tokenizers.PatternTokenizer;
+
 import parsers.JSONParser;
 import parsers.JSONTokenizer;
 
 import java.io.IOException;
 import java.io.StringReader;
 
-import static org.vinniks.parsla.tokenizer.TokenFilter.ignoreTokens;
+
 
 public class Test {
     public static void main(String[] args) throws GrammarException, IOException, ParsingException {
@@ -56,10 +56,10 @@ public class Test {
         var startTime = System.currentTimeMillis();
         var tokenizer = new JSONTokenizer();
 
-        for (var i = 1; i <= 500000; i++) {
+        for (var i = 1; i <= 1; i++) {
 //            objectMapper.readTree(new StringReader(json));
-            parser.parse(json);
-//            System.out.println(parser.parse(json));
+//            parser.parse(json);
+            System.out.println(parser.parse(json));
 //            var it = parser.getTokenizer().getTokenIterator(new StringReader(json));
 //            var it = tokenizer.getTokenIterator(new StringReader(json));
 //

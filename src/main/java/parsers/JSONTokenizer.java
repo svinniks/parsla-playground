@@ -1,16 +1,14 @@
 package parsers;
 
 import org.vinniks.parsla.exception.ParsingException;
-import org.vinniks.parsla.tokenizer.SimpleToken;
 import org.vinniks.parsla.tokenizer.Token;
 import org.vinniks.parsla.tokenizer.TokenIterator;
-import org.vinniks.parsla.tokenizer.tokenizers.AbstractBufferedTextTokenizer;
+import org.vinniks.parsla.tokenizer.text.AbstractBufferedTextTokenIterator;
+import org.vinniks.parsla.tokenizer.text.AbstractBufferedTextTokenizer;
+import org.vinniks.parsla.tokenizer.text.TextPosition;
 
 import java.io.IOException;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 public class JSONTokenizer extends AbstractBufferedTextTokenizer {
     private static final String LEFT_CURLY_BRACKET_TYPE = "left-curly-bracket";
@@ -25,41 +23,22 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
     private static final String COLON_TYPE = "colon";
     private static final String COMMA_TYPE= "comma";
 
-    private static final Iterable<String> TOKEN_TYPES = List.of(
-        LEFT_CURLY_BRACKET_TYPE,
-        RIGHT_CURLY_BRACKET_TYPE,
-        LEFT_SQUARE_BRACKET_TYPE,
-        RIGHT_SQUARE_BRACKET_TYPE,
-        STRING_TYPE,
-        DECIMAL_TYPE,
-        NULL_TYPE,
-        TRUE_TYPE,
-        FALSE_TYPE,
-        COLON_TYPE,
-        COMMA_TYPE
-    );
-
-    private static final Token LEFT_CURLY_BRACKET_TOKEN = new SimpleToken(LEFT_CURLY_BRACKET_TYPE, null);
-    private static final Token RIGHT_CURLY_BRACKET_TOKEN = new SimpleToken(RIGHT_CURLY_BRACKET_TYPE, null);
-    private static final Token LEFT_SQUARE_BRACKET_TOKEN = new SimpleToken(LEFT_SQUARE_BRACKET_TYPE, null);
-    private static final Token RIGHT_SQUARE_BRACKET_TOKEN = new SimpleToken(RIGHT_SQUARE_BRACKET_TYPE, null);
-    private static final Token NULL_TOKEN = new SimpleToken(NULL_TYPE, null);
-    private static final Token TRUE_TOKEN = new SimpleToken(TRUE_TYPE, null);
-    private static final Token FALSE_TOKEN = new SimpleToken(FALSE_TYPE, null);
-    private static final Token COLON_TOKEN = new SimpleToken(COLON_TYPE, null);
-    private static final Token COMMA_TOKEN = new SimpleToken(COMMA_TYPE, null);
-
-    @Override
-    public Iterable<String> getTokenTypes() {
-        return TOKEN_TYPES;
-    }
+    private static final Token LEFT_CURLY_BRACKET_TOKEN = new Token(LEFT_CURLY_BRACKET_TYPE, null);
+    private static final Token RIGHT_CURLY_BRACKET_TOKEN = new Token(RIGHT_CURLY_BRACKET_TYPE, null);
+    private static final Token LEFT_SQUARE_BRACKET_TOKEN = new Token(LEFT_SQUARE_BRACKET_TYPE, null);
+    private static final Token RIGHT_SQUARE_BRACKET_TOKEN = new Token(RIGHT_SQUARE_BRACKET_TYPE, null);
+    private static final Token NULL_TOKEN = new Token(NULL_TYPE, null);
+    private static final Token TRUE_TOKEN = new Token(TRUE_TYPE, null);
+    private static final Token FALSE_TOKEN = new Token(FALSE_TYPE, null);
+    private static final Token COLON_TOKEN = new Token(COLON_TYPE, null);
+    private static final Token COMMA_TOKEN = new Token(COMMA_TYPE, null);
 
     @Override
     protected TokenIterator getTokenIterator(CharacterIterator characterIterator) {
         return new JSONTokenIterator(characterIterator);
     }
 
-    private static class JSONTokenIterator implements TokenIterator {
+    private static class JSONTokenIterator implements AbstractBufferedTextTokenIterator<TextPosition> {
         private enum State {
             LF_VALUE,
             R_STRING,
@@ -71,11 +50,12 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
         private final CharacterIterator characterIterator;
         private State state;
         private char c;
-        private Deque<Token> tokens;
-        private StringBuilder valueBuilder;
+        private final Deque<Token> tokens;
+        private final StringBuilder valueBuilder;
         private String specialValue;
         private int specialI;
         private Token specialToken;
+        private TextPosition textPosition;
 
         public JSONTokenIterator(CharacterIterator characterIterator) {
             this.characterIterator = characterIterator;
@@ -98,6 +78,11 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             }
 
             return tokens.pop();
+        }
+
+        @Override
+        public TextPosition position() {
+            return null;
         }
 
         private void ensureNextToken() throws IOException {
@@ -178,7 +163,7 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             if (c == '\\') {
                 state = State.R_ESCAPED_CHARACTER;
             } else if (c == '"') {
-                tokens.push(new SimpleToken(STRING_TYPE, valueBuilder.toString()));
+                tokens.push(new Token(STRING_TYPE, valueBuilder.toString()));
                 state = State.LF_VALUE;
             } else {
                 valueBuilder.append(c);
@@ -200,7 +185,7 @@ public class JSONTokenizer extends AbstractBufferedTextTokenizer {
             } else {
                 var value = valueBuilder.toString();
                 lfValue();
-                tokens.push(new SimpleToken(DECIMAL_TYPE, value));
+                tokens.push(new Token(DECIMAL_TYPE, value));
             }
         }
 
